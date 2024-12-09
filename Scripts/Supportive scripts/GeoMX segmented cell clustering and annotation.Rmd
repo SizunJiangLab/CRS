@@ -1,0 +1,309 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+pacman::p_load(tidyverse, purrr, raster, foreach, Rphenoannoy, ComplexHeatmap, circlize, FlowSOM, matrixStats, raster, ijtiff)
+```
+
+### read in CSVs of extracted info
+```{r}
+# data import
+csv_path <- as.list(list.files('~/CRS/extracted_info/', pattern = 'dataScaleSize.csv', recursive = TRUE, full.names = TRUE))
+
+combined_ROI_df <- map_dfr(csv_path, function(x){
+  df <- read_csv(x)
+  ROI_num <- str_split(x, '/')[[1]][9] # probably need to change indexing here depending on full file path
+  df <- df %>% 
+    mutate(ROI_num = rep(ROI_num, nrow(df)))
+  return(df)
+})
+```
+
+### normalize to nuclear channel (SYTO13) across ROIs
+```{r}
+df_norm <- combined_ROI_df
+
+for (i in 1:length(unique(combined_ROI_df$ROI_num))){
+  row_index <- which(combined_ROI_df$ROI_num == unique(combined_ROI_df$ROI_num)[i])
+  df_norm[row_index, 6:8] <- combined_ROI_df[row_index, 6:8]/median(combined_ROI_df$SYTO13[row_index])
+}
+```
+
+### quantile bounding
+```{r}
+df_lb <- df_norm %>%
+  group_by(ROI_num) %>%
+  mutate(
+    CD68_lowerbound = quantile(CD68, 0.50),
+    CD45_lowerbound = quantile(CD45, 0.30)
+  ) %>%
+  mutate(
+    CD68 = ifelse(CD68 <= CD68_lowerbound, 0, CD68),
+    CD45 = ifelse(CD45 <= CD45_lowerbound, 0, CD45)
+  ) %>%
+  dplyr::select(-c(CD68_lowerbound, CD45_lowerbound)) %>%
+  ungroup()
+```
+
+### scale from 0 to 1
+```{r}
+df_trans <- df_lb
+
+rng <- colQuantiles(as.matrix(df_lb[,5:8]), probs = c(0.01, 0.99))
+
+expr = t((t(as.matrix(df_lb[,5:8]))-rng[,1]) / (rng[,2]-rng[,1]))
+
+expr[expr < 0] <- 0
+expr[expr > 1] <- 1
+
+df_trans[,5:8] <- expr
+
+df_trans <- df_trans %>%
+  dplyr::filter(!SYTO13 == 0) # filter out mesmer segmented cells with no nuclear signal
+```
+
+```{r}
+# for visualizing distribution of markers
+df_trans %>% ggplot(aes(x = SYTO13)) + geom_histogram(bins = 50)
+```
+
+### plot out cells to mask
+```{r}
+# read in segmentation masks
+seg_list <- list.files('~/CRS/seg_0.05interior_0.01maxima_2023-10-11', full.names = TRUE, recursive = TRUE, pattern = 'MESMER_mask.tif')
+seg_order <- dir('~/CRS/seg_0.05interior_0.01maxima_2023-10-11', full.names = FALSE)
+
+mask_list <- map(seg_list, function(x){
+  as.matrix(raster(x))
+})
+
+names(mask_list) <- seg_order
+```
+
+
+```{r}
+cl <- parallel::makeCluster(20)
+doParallel::registerDoParallel(cl)
+
+foreach (i = seg_order) %dopar% {
+  celltype_plot(i, seg_order, mask_list, df_trans$PanCK[df_trans$ROI_num == i], df_trans$cellLabel[df_trans$ROI_num == i],  verbose = TRUE, out = TRUE, out_path = '~/CRS/cutoff_testing/PanCK/')
+}
+
+parallel::stopCluster(cl)
+```
+
+### clustering
+```{r}
+markers <- c('CD68', 'CD45', 'PanCK')
+cluster_mat <- as.matrix(df_trans[, markers])
+
+# usually use phenograph for first round, flowsom more useful for subclustering
+pg <- Rphenoannoy(cluster_mat, 200) # can change k to adjust # of clusters, but larger k will take longer
+pg_cluster <- membership(pg[[2]])
+df_trans$pg_cluster <- as.factor(pg_cluster)
+```
+
+### visualize cluster expression
+```{r}
+### z-score heatmap
+ROI_heatmap_df <- df_trans %>%
+  dplyr::select(pg_cluster, SYTO13, CD68, CD45, PanCK)
+
+mean_df <- ROI_heatmap_df %>%
+  pivot_longer(cols = -pg_cluster, names_to = 'marker', values_to = 'value') %>%
+  group_by(marker, pg_cluster) %>%
+  summarise(mu = mean(value))
+
+pop_mean_df <- ROI_heatmap_df %>%
+  pivot_longer(cols = -pg_cluster, names_to = 'marker') %>%
+  group_by(marker) %>%
+  summarise(pop_mean = mean(value),
+            pop_sd = sd(value))
+
+mean_df <- mean_df %>%
+  ungroup() %>%
+  mutate(pop_mean = pop_mean_df$pop_mean[match(mean_df$marker, pop_mean_df$marker)],
+         pop_sd = pop_mean_df$pop_sd[match(mean_df$marker, pop_mean_df$marker)]) %>%
+  mutate(z_new = (mu - pop_mean)/pop_sd)
+
+heatmap_df <- mean_df %>%
+  dplyr::select(marker, z_new, pg_cluster) %>%
+  pivot_wider(names_from = 'marker', values_from = 'z_new')
+
+heatmap_mat <- t(as.matrix(heatmap_df[,2:5]))
+colnames(heatmap_mat) <- heatmap_df$pg_cluster
+col_fun = colorRamp2(c(-1, 0, 1), c('#4575b4', "white", '#d73027'))
+
+bar_vec <- ROI_heatmap_df %>%
+  group_by(pg_cluster) %>%
+  dplyr::count()
+
+column_ha <- HeatmapAnnotation(count = anno_barplot(bar_vec$n))
+
+Heatmap(heatmap_mat, cluster_rows = FALSE, cluster_columns  = FALSE, col = col_fun, name = 'Z Score', clustering_method_columns = 'complete',
+        row_names_side = 'left', top_annotation = column_ha, column_names_gp = grid::gpar(fontsize = 12),
+        row_names_gp = grid::gpar(fontsize = 12), rect_gp = gpar(col = "black", lwd = 2))
+
+### mean expression heatmap
+heatmap_df <- mean_df %>%
+  dplyr::select(marker, mu, pg_cluster) %>%
+  pivot_wider(names_from = 'marker', values_from = 'mu')
+
+heatmap_mat <- t(as.matrix(heatmap_df[,2:5]))
+
+colnames(heatmap_mat) <- heatmap_df$pg_cluster
+
+col_fun = colorRamp2(c(0, 1), c("white", '#d73027'))
+
+bar_vec <- ROI_heatmap_df %>%
+  group_by(pg_cluster) %>%
+  dplyr::count()
+
+column_ha <- HeatmapAnnotation(count = anno_barplot(bar_vec$n))
+
+Heatmap(heatmap_mat, cluster_rows = FALSE, cluster_columns  = FALSE, col = col_fun, name = 'Mean Expression', clustering_method_columns = 'complete',
+        row_names_side = 'left', top_annotation = column_ha, column_names_gp = grid::gpar(fontsize = 12),
+        row_names_gp = grid::gpar(fontsize = 12), rect_gp = gpar(col = "black", lwd = 2))
+```
+
+```{r}
+### mantis check
+write_csv(df_trans[, c('ROI_num', 'cellLabel', 'pg_cluster')], file = '~/CRS/mantis_csvs/check.csv', col_names = F)
+
+pg_clusters <- read_csv('~/CRS/mantis_csvs/check.csv', col_names = F) %>%
+  dplyr::rename(ROI_num = X1,
+                cellLabel = X2, 
+                pg_cluster = X3)
+
+# df_trans <- df_trans %>%
+#   left_join(pg_clusters, by = c('ROI_num', 'cellLabel'))
+```
+
+### annotation
+```{r}
+MAC_clusters <- c(2, 26, 30, 31, 33, 36, 44, 49, 53, 73, 4)
+IMM_clusters <- c(80, 1, 7, 8, 9, 13, 14, 21, 18, 27, 28, 48, 52, 10)
+EPI_clusters <- c(15, 16, 22, 23, 57, 58, 61, 66, 67, 70, 76, 77, 79, 3, 20, 34, 35, 39, 61, 19, 71)
+
+df_annotated <- df_trans %>%
+  dplyr::mutate(annotation = case_when(pg_cluster %in% MAC_clusters ~ 'MAC',
+                                       pg_cluster %in% IMM_clusters ~ 'IMM',
+                                       pg_cluster %in% EPI_clusters ~ 'EPI',
+                                       .default = 'OTHER'))
+
+write_csv(df_annotated[, c('ROI_num', 'cellLabel', 'annotation')], file = '~/CRS/mantis_csvs/final.csv', col_names = F)
+
+df_annotated <- read_csv('~/CRS/mantis_csvs/final.csv', col_names = F) %>%
+  dplyr::rename(ROI_num = X1,
+                cellLabel = X2,
+                annot = X3)
+
+# check final cell counts
+df_annotated %>%
+  group_by(ROI_num, annotation) %>%
+  dplyr::summarise(count = n()) %>%
+  pivot_wider(id_cols = ROI_num, names_from = annotation, values_from = count) %>%
+  dplyr::mutate(MAC_IMM_DIFF = MAC - IMM)
+
+df_annotated %>%
+  group_by(annotation) %>%
+  dplyr::summarise(count = n())
+```
+
+
+```{r}
+# write_csv(df_annotated, file = '~/CRS/final_annotations.csv')
+```
+
+### write masks to file
+```{r}
+for (ROI in names(mask_list)) {
+  cat('Generating masks for: ', ROI, '\n')
+  
+  MAC_labels <- df_annotated %>%
+    dplyr::filter(annotation == 'MAC') %>%
+    dplyr::filter(ROI_num == ROI) %>%
+    dplyr::pull(cellLabel)
+  
+  IMM_labels <- df_annotated %>%
+    dplyr::filter(annotation == 'IMM') %>%
+    dplyr::filter(ROI_num == ROI) %>%
+    dplyr::pull(cellLabel)
+  
+  EPI_labels <- df_annotated %>%
+    dplyr::filter(annotation == 'EPI') %>%
+    dplyr::filter(ROI_num == ROI) %>%
+    dplyr::pull(cellLabel)
+  
+  MAC_mask <- mask_list[[ROI]]
+  MAC_mask[!(MAC_mask %in% MAC_labels)] <- 0
+  MAC_mask[MAC_mask %in% MAC_labels] <- 255
+  if (!(length(MAC_labels) == 0)) {
+    write_tif(MAC_mask, paste0('~/CRS/masks/', ROI, '_MAC_1_E60118.tiff'))
+  }
+  
+  IMM_mask <- mask_list[[ROI]]
+  IMM_mask[!(IMM_mask %in% IMM_labels)] <- 0
+  IMM_mask[IMM_mask %in% IMM_labels] <- 255
+  if (!(length(IMM_labels) == 0)) {
+    write_tif(IMM_mask, paste0('~/CRS/masks/', ROI, '_IMM_2_ADFFDE.tiff'))
+  }
+  
+  EPI_mask <- mask_list[[ROI]]
+  EPI_mask[!(EPI_mask %in% EPI_labels)] <- 0
+  EPI_mask[EPI_mask %in% EPI_labels] <- 255
+  if (!(length(EPI_labels) == 0)) {
+    write_tif(EPI_mask, paste0('~/CRS/masks/', ROI, '_EPI_3_B44AFF.tiff'))
+  }
+  
+}
+```
+
+```{r}
+# generate colored phenotype masks for TMA21018, TMA21045, TMA24018
+source('~/helpers/HY_phenotype_map.R')
+
+# load in seg masks
+seg_paths <- list.files('~/CRS/seg_0.05interior_0.01maxima_2023-10-11', pattern = 'MESMER_mask.tiff', 
+                       full.names = T, recursive = T)
+
+seg_list <- list()
+fov_names <- list()
+
+for (i in 1:length(seg_paths)) {
+  fov_names[[i]] <- str_split(seg_paths[[i]], "/", simplify = TRUE)[,8]
+  seg_list[[i]] <- as.matrix(raster(seg_paths[[i]]))
+}
+
+names(seg_list) <- fov_names
+
+# generate for certain regions
+extracted_features <- rbind(read_csv('~/CRS/extracted_info/TMA21018/dataScaleSize.csv') %>% mutate(TMA = 'TMA21018', .before = 1),
+                            read_csv('~/CRS/extracted_info/TMA21045/dataScaleSize.csv') %>% mutate(TMA = 'TMA21045', .before = 1),
+                            read_csv('~/CRS/extracted_info/TMA24018/dataScaleSize.csv') %>% mutate(TMA = 'TMA24018', .before = 1))
+
+annots <- read_csv('~/CRS/mantis_csvs/final.csv', col_names = F)
+
+df <- extracted_features %>% left_join(annots, by = c('TMA' = 'X1', 'cellLabel' = 'X2')) %>%
+  replace_na(list(X3 = 'OTHER'))
+
+palette_df <- data.frame(celltype = c('EPI', 'IMM', 'MAC', 'OTHER'), color = c('magenta', 'green', '#0096C7', '#5E5E5E'))
+
+for (i in unique(df$TMA)) {
+  celltype_plot(point_num = i,
+                fov_name = i,
+                seg_list = seg_list,
+                annotation = df$X3[df$TMA == i],
+                cell_label = df$cellLabel[df$TMA == i],
+                legend_ncols = 1,
+                mypalette = palette_df,
+                verbose = T,
+                out = T,
+                format = 'tiff',
+                out_path = '~/CRS/phenotype_masks/')
+}
+```
+
