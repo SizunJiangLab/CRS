@@ -15,4 +15,8 @@ Chronic rhinosinusitis (CRS) is a common auto-inflammatory disease of the sinona
 
 ## Contact
 
-Please contact [Sizun Jiang](https://sizunjianglab.com/) at ```sjiang3@bidmc.harvard.edu``` if you have any question about this repository.
+Please contact [Sizun Jiang](https://sizunjianglab.com/) at ```sjiang3@bidmc.harvard.edu``` if you have any questions about this repository. Please note the scripts here fall under an Academic usage license.
+
+## Citation
+
+```Liao, Guanrui, et al. "Immune-Epithelial Dynamics and Tissue Remodeling in Chronically Inflamed Nasal Epithelium via Multi-scaled Transcriptomics." bioRxiv (2023): 2023-07.```
