@@ -11,4 +11,4 @@ Chronic rhinosinusitis (CRS) is a common auto-inflammatory disease of the sinona
 
 ## Contact
 
-Please contact [Sizun Jiang](sjiang3@bidmc.harvard.edu) if you have any question about this repository.
+Please contact [Sizun Jiang](https://sizunjianglab.com/) at ```sjiang3@bidmc.harvard.edu``` if you have any question about this repository.
