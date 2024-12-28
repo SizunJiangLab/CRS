@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://github.com/SizunJiangLab/CRS/blob/main/media/cropped-Jiangs-Logo.png" alt="Lab Logo" width="200">
+</p>
+
 # CRS
 Code and scripts used in manuscript 'Immune-Epithelial Dynamics and Tissue Remodeling in Chronically Inflamed Nasal Epithelium via Multi-scaled Transcriptomics'. All scripts, along with annotation, can be found [here](https://github.com/SizunJiangLab/CRS/tree/main/Scripts).
 
