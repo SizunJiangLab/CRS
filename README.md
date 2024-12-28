@@ -1,4 +1,4 @@
-<p align="center">
+<p align="left">
   <img src="https://github.com/SizunJiangLab/CRS/blob/main/media/cropped-Jiangs-Logo.png" alt="Lab Logo" width="200">
 </p>
 
