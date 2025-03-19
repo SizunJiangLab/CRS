@@ -223,88 +223,11 @@ The CRS datasets are particularly well-suited to address several key research qu
 
 ## Example Analysis Code
 
-Below are code snippets demonstrating key analyses that can be performed with these datasets:
-
 ### 1. Loading and Exploring scRNA-seq Data
-
-```R
-# Load Seurat object
-public_seurat <- readRDS("CRS_Data/NatureImmunitydataPublic2022/crs.all_seurat_jan24_24.rds")
-
-# Basic exploration
-print(public_seurat)
-table(public_seurat$disease)
-table(public_seurat$celltype)
-
-# Visualize UMAP
-DimPlot(public_seurat, reduction = "umap", group.by = "disease", label = TRUE)
-DimPlot(public_seurat, reduction = "umap", group.by = "celltype", label = TRUE)
-
-# Cell type proportions by disease
-prop.table(table(public_seurat$celltype, public_seurat$disease), margin = 2) * 100
-```
 
 ### 2. Differential Expression Analysis
 
-```R
-# Differential expression between conditions for a specific cell type
-cd8_cells <- subset(public_seurat, celltype == "CD8 T cells")
-Idents(cd8_cells) <- cd8_cells$disease
-cd8_de_genes <- FindMarkers(cd8_cells, ident.1 = "CRSwNP", ident.2 = "Control", 
-                           min.pct = 0.25, logfc.threshold = 0.25)
-
-# Visualize top DE genes
-VlnPlot(cd8_cells, features = rownames(cd8_de_genes)[1:5], split.by = "disease", ncol = 3)
-
-# Pathway enrichment using clusterProfiler
-library(clusterProfiler)
-library(org.Hs.eg.db)
-gene_list <- rownames(cd8_de_genes[cd8_de_genes$p_val_adj < 0.05, ])
-gene_ids <- mapIds(org.Hs.eg.db, keys = gene_list, keytype = "SYMBOL", column = "ENTREZID")
-go_enrichment <- enrichGO(gene = gene_ids, OrgDb = org.Hs.eg.db, 
-                          ont = "BP", pAdjustMethod = "BH", 
-                          pvalueCutoff = 0.05, qvalueCutoff = 0.05)
-```
-
 ### 3. GeoMX Spatial Analysis
-
-```R
-# Load GeoMX data
-expr_data <- read.csv("CRS_Data/GeoMX_sequencing_data/countFile_normalized_and_batch_effect_corrected.csv")
-sample_anno <- read.csv("CRS_Data/GeoMX_sequencing_data/sampleAnnoFile.csv")
-
-# Filter to focus on specific tissue types
-crswp_samples <- sample_anno[sample_anno$TissueType == "CRSwNP", ]
-crswp_expr <- expr_data[, colnames(expr_data) %in% rownames(crswp_samples)]
-
-# Compare expression between compartments
-epi_samples <- grep("EPI", colnames(crswp_expr), value = TRUE)
-imm_samples <- grep("IMM", colnames(crswp_expr), value = TRUE)
-mac_samples <- grep("MAC", colnames(crswp_expr), value = TRUE)
-
-# Calculate mean expression by compartment
-epi_mean <- rowMeans(crswp_expr[, epi_samples])
-imm_mean <- rowMeans(crswp_expr[, imm_samples])
-mac_mean <- rowMeans(crswp_expr[, mac_samples])
-
-# Find compartment-specific genes
-compartment_specific <- data.frame(
-  gene = rownames(crswp_expr),
-  EPI = epi_mean,
-  IMM = imm_mean,
-  MAC = mac_mean
-)
-
-# Visualization with heatmap
-library(pheatmap)
-top_genes <- names(sort(apply(crswp_expr, 1, var), decreasing = TRUE))[1:50]
-pheatmap(crswp_expr[top_genes, ], 
-         annotation_col = sample_anno[colnames(crswp_expr), c("SegmentLabel", "TissueType")],
-         scale = "row",
-         clustering_distance_rows = "correlation",
-         clustering_distance_cols = "correlation",
-         main = "Top Variable Genes in CRSwNP Samples")
-```
 
 ## Conclusion
 
