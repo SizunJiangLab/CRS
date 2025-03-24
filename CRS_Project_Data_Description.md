@@ -8,7 +8,7 @@ This document describes the data available for the Chronic rhinosinusitis (CRS) 
 
 The CRS project contains three main types of data:
 
-1. **Public scRNA-seq Data**: A publicly available dataset from a Nature Immunity 2022 publication.
+1. **Public scRNA-seq Data**: A publicly available dataset from a [Nature Immunology 2022 publication](https://www.nature.com/articles/s41590-022-01312-0).
 2. **In-house scRNA-seq Data**: Two datasets representing epithelial cells and immune cells.
 3. **In-house GeoMX Data**: Consisting of both sequencing data and imaging data.
 
