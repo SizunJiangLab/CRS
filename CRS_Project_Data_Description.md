@@ -22,7 +22,7 @@ The CRS project contains three main types of data:
 
 ### Description
 
-This is a publicly available scRNA-seq dataset from a Nature Immunity 2022 publication related to Chronic rhinosinusitis. The dataset has been processed and stored as a Seurat object.
+This is a publicly available scRNA-seq dataset from a Wang et al. (Nature Immunology 2022) related to Chronic rhinosinusitis. The dataset has been processed and stored as a Seurat object.
 
 ### Detailed Analysis
 
