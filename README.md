@@ -7,7 +7,7 @@ Code and scripts used in manuscript 'Immune-Epithelial Dynamics and Tissue Remod
 
 The full manuscript can be accessed [here](https://www.biorxiv.org/content/10.1101/2023.07.01.547352v1.abstract).
 
-The website accompanying this manuscript can be accessed [here](https://bmblx.bmi.osumc.edu/immune_epi/) and via this backup [alternative]([https://bmblx.bmi.osumc.edu/immune_epi/](https://immune-epi.osubmi.org/) 
+The website accompanying this manuscript can be accessed [here](https://bmblx.bmi.osumc.edu/immune_epi/) and via this backup [alternative](https://immune-epi.osubmi.org/)
 
 ## Abstract
 
