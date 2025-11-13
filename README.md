@@ -7,7 +7,7 @@ Code and scripts used in manuscript 'Immune-Epithelial Dynamics and Tissue Remod
 
 The full manuscript can be accessed [here](https://www.biorxiv.org/content/10.1101/2023.07.01.547352v1.abstract).
 
-The digital spatial profiling data have been deposited in Zenodo under [here](https://doi.org/10.5281/zenodo.17154922) and are publicly available from the date of publication.
+The digital spatial profiling data have been deposited in Zenodo under [here](https://doi.org/10.5281/zenodo.17154922). The raw single-cell RNA-seq data are available in the GEO database under accession number GSE235715. under GEO accession number GSE235715. All datasets are publicly accessible from the date of publication.
 
 The website accompanying this manuscript can be accessed [here](https://bmblx.bmi.osumc.edu/immune_epi/) and via this backup [alternative](https://immune-epi.osubmi.org/)
 
